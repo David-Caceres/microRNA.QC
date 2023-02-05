@@ -1,0 +1,997 @@
+---
+title: "Exosomes raw data Quality control"
+author: "David Cáceres"
+date: "30/1/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, root.dir ="~/Exosomas/QC/Data/" )
+```
+
+### Librerias
+
+```{r}
+library(ggplot2)
+library(DESeq2)
+library(patchwork)
+library(ggsci)
+library(cowplot)
+library(data.table)
+library(tibble)
+library(factoextra)
+library(base)
+library(tidyverse)
+library(gridExtra)
+library(plyr)
+```
+
+
+### Data read
+```{r}
+setwd("~/Exosomas/QC/Data/")
+
+tipos_exo<-read.table(file="readsPerc.tsv", header = TRUE, sep = "\t")
+
+brainq_reads<-read.table(file="brain_reads.tsv", header = TRUE, sep = "\t")
+
+brainq_short<-read.table(file="brainq_short.tsv", header = TRUE, sep = "\t")
+
+brainq_ushort<-read.table(file="brainq_ushort.tsv", header = TRUE, sep = "\t")
+
+short<-read.table(file="shortReadsPerc.tsv", header = TRUE, sep = "\t")
+
+ushort<-read.table(file="ultrashort.tsv", header = TRUE, sep = "\t")
+
+ref.genome<-read.table(file="ref.genome.tsv", header = TRUE, sep = "\t")
+
+unmapped<-read.table(file="unmapped.tsv", header = TRUE, sep = "\t")
+
+contaminacion<-read.table(file="Contaminacion.tsv", header = TRUE, sep = "\t")
+
+brainq_contaminacion<-read.table(file="brainq_contaminacion.tsv", header = TRUE, sep = "\t")
+
+reads_total<-read.table(file="Total_reads.tsv", header = TRUE, sep = "\t")
+
+```
+
+
+# Reads distribution by batch with brain replicate
+
+```{r}
+
+# Adding shortnames
+
+values <- c("A","B","C","D","E","F","G", "H")
+tipos_exo$batch<-as.factor(tipos_exo$batch)
+tipos_exo$batch_shortname <- values[tipos_exo$batch]
+
+
+# Percent of effective reads
+
+tipos_exo <- tipos_exo |> 
+    mutate(sample1 = reorder(sample, -ifelse(!X %in% "readsPerc", 0, value), FUN = sum))
+
+p1 <- ggplot(tipos_exo,aes(x = sample1, y = value, fill = factor(X, levels=c("readsAdapterNotFoundPerc","shortReads","readsPerc")), width=1.05)) +
+    geom_bar( stat = "identity", position = position_stack()) +
+    scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+    labs(x = NULL, y= "% Reads" , title="Efective reads% Distribution", fill="Quality Control") +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.ticks.length.x = unit(0, "pt")) +
+    theme(
+        panel.background = element_rect(fill='transparent'),
+        plot.background = element_rect(fill='transparent', color=NA),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.background = element_rect(fill='transparent'),
+        legend.box.background = element_rect(fill='transparent'),
+        plot.title = element_text(face="bold")
+    ) + scale_fill_simpsons(labels=c("Adapter not found","Short Reads%","Reads%"))
+
+tipos_exo1 <- tipos_exo |>
+    distinct(sample, sample1, batch_shortname)
+
+p_axis <- ggplot(tipos_exo1, aes(x = sample1, y = factor(1), fill = batch_shortname)) +
+    geom_tile(width = 1) +
+    theme_void() +
+    theme(axis.title.x = element_text()) + theme(legend.position = "none")  +
+    labs(x="Batch Annotation", fill="Batch") 
+
+p1_q<-p1 / p_axis + plot_layout(heights = c(8,1))  + scale_fill_igv()
+
+
+
+# Cerebro
+
+
+p_reads_brain<-ggplot(brainq_reads,aes(x = batch, y = value1, fill = factor(variable1, levels=c("readsAdapterNotFoundPerc","shortReads","readsPerc")))) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "% Reads" , title="Brain Reads% Distribution") +
+theme(axis.text.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + scale_fill_simpsons()+
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent'),
+plot.title = element_text(face="bold")
+) + theme(legend.position = "none")
+p_axis_reads_brain <- ggplot(brainq_reads, aes(x =batch, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text())  +
+geom_text(aes(label = batch_shortname)) +
+labs(x="Batch Annotation", fill="Batch Annotation") +
+theme(legend.position="none")
+p3_qb<-p_reads_brain / p_axis_reads_brain + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+
+pt1<-plot_grid(p1_q,p3_qb, rel_widths = c(1.7, 1.3), labels = c("A","B"))
+
+
+
+pt1
+
+```
+
+
+```{r}
+
+#Short Reads%
+
+
+short <- short |> 
+    mutate(sample1 = reorder(sample, -ifelse(!X %in% "shortReadsPerc", 0, value), FUN = sum))
+
+
+p_short<-ggplot(short,aes(x =sample1, y = value, fill = factor(X, levels=c("readsAdapterNotFoundPerc","reads","shortReadsPerc")), width=1.05)) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "Short reads%" , title="Short reads% Distribution", fill="Quality Control") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + 
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) + scale_fill_simpsons(labels=c("Adapter not found","Reads%","Short Reads%"))
+
+
+
+
+p_axis_short <- ggplot(short, aes(x =sample1, y = factor(1), fill = batch)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) + theme(legend.position = "none") +
+labs(x="Batch Annotation", fill="Batch")
+p3q<-p_short / p_axis_short + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+
+# Cerebro
+
+p_short_brain<-ggplot(brainq_short,aes(x = batch, y = value1,fill = factor(variable1, levels=c("readsAdapterNotFoundPerc","reads","shortReadsPerc")))) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "% Short reads" , title="Brain short reads% Distribution", fill="QC") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + scale_fill_simpsons()+
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) +
+theme(legend.position="none")
+
+
+p_axis_short_brain <- ggplot(brainq_short, aes(x =batch, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) +
+geom_text(aes(label = batch_shortname)) +
+labs(x="Batch Annotation", fill="Batch Annotation") +
+theme(legend.position="none") 
+p4_qb<-p_short_brain / p_axis_short_brain + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+
+pt2<-plot_grid(p3q,p4_qb, rel_widths = c(1.7, 1.3))
+
+pt2
+```
+
+
+
+```{r}
+
+# Ultra Short%
+
+ushort <- ushort |> 
+    mutate(sample1 = reorder(sample, -ifelse(!X %in% "ultraShortReadsPerc", 0, value), FUN = sum))
+
+
+p_ushort<-ggplot(ushort,aes(x =sample1, y = value, fill = factor(X, levels=c("readsAdapterNotFoundPerc","reads","ultraShortReadsPerc")), width=1.05)) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "Ultra Short reads%" , title="Ultra Short Reads% Distribution", fill="Quality Control") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + 
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent'),
+plot.title = element_text(face="bold")
+) + scale_fill_simpsons(labels=c("Adapter not found","Reads%","Ultra short Reads%"))
+
+
+
+p_axis_ushort <- ggplot(ushort, aes(x =sample1, y = factor(1), fill = batch)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) + theme(legend.position = "none") +
+labs(x="Batch Annotation", fill="Batch")
+p5_q<-p_ushort / p_axis_ushort + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+
+
+# Cerebro
+
+p_ushort_brain<-ggplot(brainq_ushort,aes(x = batch, y = value1,fill = factor(variable1, levels=c("readsAdapterNotFoundPerc","reads","ultraShortReadsPerc")))) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "% Ultra Short reads" , title="Brain Ultra short reads% Distribution", fill="QC") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + scale_fill_simpsons()+
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent'),
+plot.title = element_text(face="bold")
+) +
+theme(legend.position="none")
+
+
+p_axis_ushort_brain <- ggplot(brainq_ushort, aes(x =batch, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) +
+geom_text(aes(label = batch_shortname)) +
+labs(x="Batch Annotation", fill="Batch Annotation") +
+theme(legend.position="none") 
+p5_qb<-p_ushort_brain / p_axis_ushort_brain + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+
+
+pt3<-plot_grid(p5_q,p5_qb, rel_widths = c(1.7, 1.3))
+
+pt3
+```
+
+
+
+```{r}
+
+contaminacion$batch<-as.factor(contaminacion$batch)
+contaminacion$batch_shortname <- values[contaminacion$batch]
+
+
+# Referece genome contamination
+
+
+contaminacion <- contaminacion |> 
+    mutate(sample1 = reorder(sample, -ifelse(!variable %in% "% ref.genome", 0, value), FUN = sum))
+
+
+p_ref.genome<-ggplot(contaminacion,aes(x =sample1, y = value, fill = factor(variable, levels=c("virus","bacteria","unmapped","% ref.genome")), width=1.05)) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "Reads%" , title="Mapped Reads% Distribution", fill="Quality Control") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + 
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) + scale_fill_simpsons(labels=c("Virus","Bacteria","Unmapped","Mapped Reads%"))
+
+
+contaminacion1 <- contaminacion |>
+    distinct(sample, sample1, batch_shortname)
+
+p_axis_ref.genome <- ggplot(contaminacion1, aes(x =sample1, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) + theme(legend.position = "none") +
+labs(x="Batch Annotation", fill="Batch")
+p6_q<-p_ref.genome / p_axis_ref.genome + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+
+# Cerebro
+
+brainq_contaminacion$batch<-as.factor(brainq_contaminacion$batch)
+brainq_contaminacion$batch_shortname <- values[brainq_contaminacion$batch]
+
+p_ref.genome_brain<-ggplot(brainq_contaminacion,aes(x = batch, y = value,fill = factor(variable, levels=c("virus","bacteria","unmapped","refSpecies")))) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "% Reads" , title="Mapped Reads% Distribution", fill="QC") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + scale_fill_simpsons()+
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) +
+theme(legend.position="none")
+
+
+p_axis_ref.genome_brain <- ggplot(brainq_contaminacion, aes(x =batch, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) +
+geom_text(aes(label = batch_shortname)) +
+labs(x="Batch Annotation", fill="Batch Annotation") +
+theme(legend.position="none") 
+p6_qb<-p_ref.genome_brain / p_axis_ref.genome_brain + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+plot_grid(p6_q,p6_qb, rel_widths = c(2, 1))
+
+```
+
+
+
+```{r}
+
+# Unmapped reads%
+
+contaminacion <- contaminacion |> 
+    mutate(sample1 = reorder(sample, -ifelse(!variable %in% "unmapped", 0, value), FUN = sum))
+
+p_unmapped<-ggplot(contaminacion,aes(x =sample1, y = value, fill = factor(variable, levels=c("virus","bacteria","% ref.genome","unmapped")), width=1.05)) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "Reads%" , title="Unmapped Reads% Distribution", fill="Quality Control") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + 
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) + scale_fill_simpsons(labels=c("Virus","Bacteria","Mapped Reads%","Unmapped"))
+
+
+contaminacion1 <- contaminacion |>
+    distinct(sample, sample1, batch_shortname)
+
+p_axis_unmapped <- ggplot(contaminacion1, aes(x =sample1, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) + theme(legend.position = "none") +
+labs(x="Batch Annotation", fill="Batch")
+p7_q<-p_unmapped / p_axis_unmapped + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+# Cerebro
+
+p_unmapped_brain<-ggplot(brainq_contaminacion,aes(x = batch, y = value,fill = factor(variable, levels=c("virus","bacteria","unmapped","refSpecies")))) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "% Reads" , title="Unmapped Reads% Distribution", fill="QC") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + scale_fill_simpsons()+
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) +
+theme(legend.position="none")
+
+
+p_axis_unmapped_brain <- ggplot(brainq_contaminacion, aes(x =batch, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) +
+geom_text(aes(label = batch_shortname)) +
+labs(x="Batch Annotation", fill="Batch Annotation") +
+theme(legend.position="none") 
+p7_qb<-p_unmapped_brain / p_axis_unmapped_brain + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+
+plot_grid(p7_q,p7_qb, rel_widths = c(2, 1))
+
+```
+
+
+```{r}
+
+# Bacteria
+
+contaminacion <- contaminacion |> 
+    mutate(sample1 = reorder(sample, -ifelse(!variable %in% "bacteria", 0, value), FUN = sum))
+
+p_bacteria<-ggplot(contaminacion,aes(x =sample1, y = value, fill = factor(variable, levels=c("% ref.genome","unmapped","virus","bacteria")), width=1.05)) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "Reads%" , title="Bacteria Reads%", fill="Quality Control") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + 
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) + scale_fill_simpsons(labels=c("Mapped Reads%","Unmapped","Virus","Bacteria"))
+
+
+contaminacion1 <- contaminacion |>
+    distinct(sample, sample1, batch_shortname)
+
+p_axis_bacteria <- ggplot(contaminacion1, aes(x =sample1, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) + theme(legend.position = "none") +
+labs(x="Batch Annotation", fill="Batch")
+p8_q<-p_bacteria / p_axis_bacteria + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+
+#cerebro
+
+p_bacteria_brain<-ggplot(brainq_contaminacion,aes(x = batch, y = value,fill = factor(variable, levels=c("unmapped","refSpecies","virus","bacteria")))) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "% Reads" , title="Brain Bacteria Reads%", fill="QC") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + scale_fill_simpsons()+
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) +
+theme(legend.position="none")
+
+
+p_axis_bacteria_brain <- ggplot(brainq_contaminacion, aes(x =batch, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) +
+geom_text(aes(label = batch_shortname)) +
+labs(x="Batch Annotation", fill="Batch Annotation") +
+theme(legend.position="none") 
+
+p8_qb<-p_bacteria_brain / p_axis_bacteria_brain + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+
+pt8<-plot_grid(p8_q,p8_qb, rel_widths = c(1.7, 1.3))
+
+
+pt8
+```
+
+
+
+```{r}
+# Virus
+
+
+contaminacion <- contaminacion |> 
+    mutate(sample1 = reorder(sample, -ifelse(!variable %in% "virus", 0, value), FUN = sum))
+
+p_virus<-ggplot(contaminacion,aes(x =sample1, y = value, fill = factor(variable, levels=c("% ref.genome","unmapped","bacteria","virus")), width=1.05)) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "Reads%" , title="Virus Reads%", fill="Quality Control") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + 
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) + scale_fill_simpsons(labels=c("Mapped Reads%","Unmapped","Bacteria","Virus"))
+
+
+contaminacion1 <- contaminacion |>
+    distinct(sample, sample1, batch_shortname)
+
+p_axis_virus <- ggplot(contaminacion1, aes(x =sample1, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) + theme(legend.position = "none") +
+labs(x="Batch Annotation", fill="Batch")
+
+p9_q<-p_virus / p_axis_virus + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+
+# Cerebro
+
+p_virus_brain<-ggplot(brainq_contaminacion,aes(x = batch, y = value,fill = factor(variable, levels=c("unmapped","refSpecies","bacteria","virus")))) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0), breaks = seq(0, 100, by = 10)) +
+labs(x = NULL, y= "% Reads" , title="Brain Virus Reads%", fill="QC") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + scale_fill_simpsons()+
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) +
+theme(legend.position="none")
+
+
+p_axis_virus_brain <- ggplot(brainq_contaminacion, aes(x =batch, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text()) +
+geom_text(aes(label = batch_shortname)) +
+labs(x="Batch Annotation", fill="Batch Annotation") +
+theme(legend.position="none") 
+p9_qb<-p_virus_brain / p_axis_virus_brain + plot_layout(heights = c(8, 1))  + scale_fill_igv()
+
+pt9<-plot_grid(p9_q,p9_qb, rel_widths = c(1.7, 1.3))
+
+pt9
+```
+
+
+# Total reads
+
+```{r}
+
+reads_total_brain<-reads_total[c(13,42,77,106,141,194,222,256),]
+
+
+
+p_reads_t<-ggplot(reads_total,aes(x = reorder(sample, -reads), y = reads, fill = variable, width=1.05)) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0)) +
+labs(x = NULL, y= "Reads" , title="Reads total QC", fill="Quality Control") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) + 
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) + scale_fill_manual(values = c("darkgrey"),labels=c("Total Reads"))
+
+p_axis_reads_t<- ggplot(reads_total, aes(x = reorder(sample, -reads), y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+theme_void() +
+theme(axis.title.x = element_text(), legend.position=c(1.09,2.2)) +
+labs(x="Batch Annotation", fill="Batch Annotation") + theme(legend.position = "none") + scale_fill_igv()
+
+p10_q<-p_reads_t / p_axis_reads_t + plot_layout(heights = c(8, 1))  
+
+
+# Cerebro
+
+p_reads_total_brain<-ggplot(reads_total_brain,aes(x = sample, y = reads, fill = "none")) +
+geom_bar( stat = "identity") +
+scale_y_continuous(expand = c(0, 0)) +
+labs(x = NULL, y= "Reads" , title="Brain Reads total QC") +
+theme(axis.text.x = element_blank(),
+axis.ticks.x = element_blank(),
+axis.ticks.length.x = unit(0, "pt")) +
+theme(
+panel.background = element_rect(fill='transparent'),
+plot.background = element_rect(fill='transparent', color=NA),
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank(),
+legend.background = element_rect(fill='transparent'),
+legend.box.background = element_rect(fill='transparent')
+) + theme(legend.position = "none") +
+scale_fill_manual(values = c("darkgrey"))
+
+p_axis_total_brain <- ggplot(reads_total_brain, aes(x =sample, y = factor(1), fill = batch_shortname)) +
+geom_tile(width = 1) +
+geom_text(aes(label = batch_shortname)) +
+theme_void() +
+theme(axis.title.x = element_text()) +  
+labs(x="Batch Annotation") + theme(legend.position = "none") +
+scale_fill_igv()
+
+
+
+p10_qb<-p_reads_total_brain/ p_axis_total_brain + plot_layout(heights = c(8, 1))  
+
+pt10<-plot_grid(p10_q,p10_qb, rel_widths = c(1.7, 1.3))
+
+pt10
+```
+
+
+```{r}
+grid.arrange(pt1,pt2,pt3,pt10, nrow = 2,ncol=2)
+grid.arrange(pt8,pt9, nrow = 2)
+
+```
+
+## Construccion de la matriz de expresion para miRna
+
+```{r echo=FALSE}
+
+# Pasamos este script pot cada batch para montar su matriz de expresión, luego lo usamos para montar otra a partir de ellas.
+
+setwd("~/Exosomas/QC/Expresion/Expresion_180322-190603/")
+
+filenames <- list.files(pattern="*.tsv") # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.table(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,3)) # Extraigo las 2 columnas que necesito
+matrixA<-rbindlist(list3,fill=TRUE) # Uno todos los dataframes en uno
+matrixA %>% distinct() # Compruebo si hay duplicados en la columna de miRnas
+list4 <- lapply(list3, function(x) x[!duplicated(x$name),])
+matrixA<-rbindlist(list4,fill=TRUE)
+write.table(matrixA, file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixA.csv", quote = TRUE, sep = ",")
+
+
+setwd("~/Exosomas/QC/Expresion/Expresion_180626-180628-190531/")
+
+filenames <- list.files(pattern="*.tsv") # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.table(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,3)) # Extraigo las 2 columnas que necesito
+matrixA<-rbindlist(list3,fill=TRUE) # Uno todos los dataframes en uno
+matrixA %>% distinct() # Compruebo si hay duplicados en la columna de miRnas
+list4 <- lapply(list3, function(x) x[!duplicated(x$name),])
+matrixB<-rbindlist(list4,fill=TRUE)
+write.table(matrixB, file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixB.csv", quote = TRUE, sep = ",")
+
+
+setwd("~/Exosomas/QC/Expresion/Expresion_180726-190530/")
+
+filenames <- list.files(pattern="*.tsv") # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.table(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,3)) # Extraigo las 2 columnas que necesito
+matrixA<-rbindlist(list3,fill=TRUE) # Uno todos los dataframes en uno
+matrixA %>% distinct() # Compruebo si hay duplicados en la columna de miRnas
+list4 <- lapply(list3, function(x) x[!duplicated(x$name),])
+matrixC<-rbindlist(list4,fill=TRUE)
+write.table(matrixC, file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixC.csv",quote = TRUE, sep = ",")
+
+
+setwd("~/Exosomas/QC/Expresion/Expresion_180913-190529/")
+
+filenames <- list.files(pattern="*.tsv") # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.table(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,3)) # Extraigo las 2 columnas que necesito
+matrixA<-rbindlist(list3,fill=TRUE) # Uno todos los dataframes en uno
+matrixA %>% distinct() # Compruebo si hay duplicados en la columna de miRnas
+list4 <- lapply(list3, function(x) x[!duplicated(x$name),])
+matrixD<-rbindlist(list4,fill=TRUE)
+write.table(matrixD, file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixD.csv", quote = TRUE, sep = ",")
+
+
+setwd("~/Exosomas/QC/Expresion/Expresion_180919-190527/")
+
+filenames <- list.files(pattern="*.tsv") # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.table(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,3)) # Extraigo las 2 columnas que necesito
+matrixA<-rbindlist(list3,fill=TRUE) # Uno todos los dataframes en uno
+matrixA %>% distinct() # Compruebo si hay duplicados en la columna de miRnas
+list4 <- lapply(list3, function(x) x[!duplicated(x$name),])
+matrixE<-rbindlist(list4,fill=TRUE)
+write.table(matrixE, file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixE.csv", quote = TRUE, sep = ",")
+
+
+setwd("~/Exosomas/QC/Expresion/Expresion_181003-190524/")
+
+filenames <- list.files(pattern="*.tsv") # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.table(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,3)) # Extraigo las 2 columnas que necesito
+matrixA<-rbindlist(list3,fill=TRUE) # Uno todos los dataframes en uno
+matrixA %>% distinct() # Compruebo si hay duplicados en la columna de miRnas
+list4 <- lapply(list3, function(x) x[!duplicated(x$name),])
+matrixF<-rbindlist(list4,fill=TRUE)
+write.table(matrixF, file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixF.csv", quote = TRUE, sep = ",")
+
+
+setwd("~/Exosomas/QC/Expresion/Expresion_181004-190521/")
+
+filenames <- list.files(pattern="*.tsv") # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.table(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,3)) # Extraigo las 2 columnas que necesito
+matrixA<-rbindlist(list3,fill=TRUE) # Uno todos los dataframes en uno
+matrixA %>% distinct() # Compruebo si hay duplicados en la columna de miRnas
+list4 <- lapply(list3, function(x) x[!duplicated(x$name),])
+matrixG<-rbindlist(list4,fill=TRUE)
+write.table(matrixG, file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixG.csv",quote = TRUE, sep = ",")
+
+
+setwd("~/Exosomas/QC/Expresion/Expresion_181023-190319/")
+
+filenames <- list.files(pattern="*.tsv") # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.table(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,3)) # Extraigo las 2 columnas que necesito
+matrixA<-rbindlist(list3,fill=TRUE) # Uno todos los dataframes en uno
+matrixA %>% distinct() # Compruebo si hay duplicados en la columna de miRnas
+list4 <- lapply(list3, function(x) x[!duplicated(x$name),])
+matrixH<-rbindlist(list4,fill=TRUE)
+write.table(matrixH, file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixH.csv", quote = TRUE, sep = ",")
+
+
+setwd("~/Exosomas/QC/Expresion/Matrices de Expresion/")
+
+filenames <- list.files(pattern="*.csv") # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.delim(file = x,
+sep = ',',
+header = TRUE,
+stringsAsFactors=FALSE)
+})
+matrixA<-rbindlist(all_files,fill=TRUE)# Uno todos los dataframes en uno
+matrixA<-matrixA %>% mutate_if(is.integer,as.numeric)
+
+matrixA<-matrixA%>%group_by(name)%>% summarise_if(
+    is.numeric,
+    sum,
+    na.rm = TRUE
+  )
+
+write.table(matrixA, file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixX.csv", quote = TRUE, sep = "\t")
+
+
+```
+
+
+
+# Matriz de expresión para RC percentage Genome distribution
+
+
+```{r echo=FALSE}
+
+setwd("~/Exosomas/QC/readLen/Expresion_180322-190603/")
+filenames <- list.files(pattern="*/*.tsv", recursive=TRUE) # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.delim(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,5))
+matrixA<-rbindlist(list3, fill=TRUE) # Uno todos los dataframes en uno
+readLen_RC<-matrixA %>%   # Colapso los datos
+    group_by(Read.Length..nt.) %>% 
+    dplyr::summarise(across(starts_with("x"), ~sum(., na.rm = TRUE)))
+
+readLen_RC_A<-readLen_RC %>% dplyr::select(-contains("Brain"))
+names(readLen_RC_A)=stringr::str_sub(names(readLen_RC_A),2)
+names(readLen_RC_A)[names(readLen_RC_A) == 'ead.Length..nt.'] <- 'Read_Length_nt'
+
+
+setwd("~/Exosomas/QC/readLen/Expresion_180626-180628-190531/")
+filenames <- list.files(pattern="*/*.tsv", recursive=TRUE) # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.delim(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,5))
+matrixA<-rbindlist(list3, fill=TRUE) # Uno todos los dataframes en uno
+readLen_RC<-matrixA %>%   # Colapso los datos
+    group_by(Read.Length..nt.) %>% 
+    dplyr::summarise(across(starts_with("x"), ~sum(., na.rm = TRUE)))
+
+readLen_RC_B<-readLen_RC %>% dplyr::select(-contains("Brain"))
+names(readLen_RC_B)=stringr::str_sub(names(readLen_RC_B),2)
+names(readLen_RC_B)[names(readLen_RC_B) == 'ead.Length..nt.'] <- 'Read_Length_nt'
+
+
+setwd("~/Exosomas/QC/readLen/Expresion_180726-190530/")
+filenames <- list.files(pattern="*/*.tsv", recursive=TRUE) # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.delim(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,5))
+matrixA<-rbindlist(list3, fill=TRUE) # Uno todos los dataframes en uno
+readLen_RC<-matrixA %>%   # Colapso los datos
+    group_by(Read.Length..nt.) %>% 
+    dplyr::summarise(across(starts_with("x"), ~sum(., na.rm = TRUE)))
+
+readLen_RC_C<-readLen_RC %>% dplyr::select(-contains("Brain"))
+names(readLen_RC_C)=stringr::str_sub(names(readLen_RC_C),2)
+names(readLen_RC_C)[names(readLen_RC_C) == 'ead.Length..nt.'] <- 'Read_Length_nt'
+
+
+setwd("~/Exosomas/QC/readLen/Expresion_180913-190529/")
+filenames <- list.files(pattern="*/*.tsv", recursive=TRUE) # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.delim(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,5))
+matrixA<-rbindlist(list3, fill=TRUE) # Uno todos los dataframes en uno
+readLen_RC<-matrixA %>%   # Colapso los datos
+    group_by(Read.Length..nt.) %>% 
+    dplyr::summarise(across(starts_with("x"), ~sum(., na.rm = TRUE)))
+
+readLen_RC_D<-readLen_RC %>% dplyr::select(-contains("Brain"))
+names(readLen_RC_D)=stringr::str_sub(names(readLen_RC_D),2)
+names(readLen_RC_D)[names(readLen_RC_D) == 'ead.Length..nt.'] <- 'Read_Length_nt'
+
+
+setwd("~/Exosomas/QC/readLen/Expresion_180919-190527/")
+filenames <- list.files(pattern="*/*.tsv", recursive=TRUE) # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.delim(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,5))
+matrixA<-rbindlist(list3, fill=TRUE) # Uno todos los dataframes en uno
+readLen_RC<-matrixA %>%   # Colapso los datos
+    group_by(Read.Length..nt.) %>% 
+    dplyr::summarise(across(starts_with("x"), ~sum(., na.rm = TRUE)))
+
+readLen_RC_E<-readLen_RC %>% dplyr::select(-contains("Brain"))
+names(readLen_RC_E)=stringr::str_sub(names(readLen_RC_E),2)
+names(readLen_RC_E)[names(readLen_RC_E) == 'ead.Length..nt.'] <- 'Read_Length_nt'
+
+
+setwd("~/Exosomas/QC/readLen/Expresion_181003-190524/")
+filenames <- list.files(pattern="*/*.tsv", recursive=TRUE) # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.delim(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,5))
+matrixA<-rbindlist(list3, fill=TRUE) # Uno todos los dataframes en uno
+readLen_RC<-matrixA %>%   # Colapso los datos
+    group_by(Read.Length..nt.) %>% 
+    dplyr::summarise(across(starts_with("x"), ~sum(., na.rm = TRUE)))
+
+readLen_RC_F<-readLen_RC %>% dplyr::select(-contains("Brain"))
+names(readLen_RC_F)=stringr::str_sub(names(readLen_RC_F),2)
+names(readLen_RC_F)[names(readLen_RC_F) == 'ead.Length..nt.'] <- 'Read_Length_nt'
+
+
+setwd("~/Exosomas/QC/readLen/Expresion_181004-190521/")
+filenames <- list.files(pattern="*/*.tsv", recursive=TRUE) # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.delim(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,5))
+matrixA<-rbindlist(list3, fill=TRUE) # Uno todos los dataframes en uno
+readLen_RC<-matrixA %>%   # Colapso los datos
+    group_by(Read.Length..nt.) %>% 
+    dplyr::summarise(across(starts_with("x"), ~sum(., na.rm = TRUE)))
+
+readLen_RC_G<-readLen_RC %>% dplyr::select(-contains("Brain"))
+names(readLen_RC_G)=stringr::str_sub(names(readLen_RC_G),2)
+names(readLen_RC_G)[names(readLen_RC_G) == 'ead.Length..nt.'] <- 'Read_Length_nt'
+
+setwd("~/Exosomas/QC/readLen/Expresion_181023-190319/")
+filenames <- list.files(pattern="*/*.tsv", recursive=TRUE) # Leo los archivos de una carpeta
+all_files <- lapply(filenames,function(x) { # Cargo los archivos y añado espacios
+read.delim(file = x,
+sep = '\t',
+header = TRUE)
+})
+list3<- lapply(all_files, "[", c(1,5))
+matrixA<-rbindlist(list3, fill=TRUE) # Uno todos los dataframes en uno
+readLen_RC<-matrixA %>%   # Colapso los datos
+    group_by(Read.Length..nt.) %>% 
+    dplyr::summarise(across(starts_with("x"), ~sum(., na.rm = TRUE)))
+
+readLen_RC_H<-readLen_RC %>% dplyr::select(-contains("Brain"))
+names(readLen_RC_H)=stringr::str_sub(names(readLen_RC_H),2)
+names(readLen_RC_H)[names(readLen_RC_H) == 'ead.Length..nt.'] <- 'Read_Length_nt'
+
+
+```
+
+
+
+# Genome Distribution
+
+```{r}
+
+readLen_RC_A$A = rowMeans(readLen_RC_A[,c(2,36)])
+readLen_RC_B$B = rowMeans(readLen_RC_B[,c(2,32)])
+readLen_RC_C$C = rowMeans(readLen_RC_C[,c(2,36)])
+readLen_RC_D$D = rowMeans(readLen_RC_D[,c(2,36)])
+readLen_RC_E$E = rowMeans(readLen_RC_E[,c(2,35)])
+readLen_RC_F$F = rowMeans(readLen_RC_F[,c(2,34)])
+readLen_RC_G$G = rowMeans(readLen_RC_G[,c(2,35)])
+readLen_RC_H$H = rowMeans(readLen_RC_H[,c(2,29)])
+
+readLen<-data.frame(readLen_RC_A$Read_Length_nt,readLen_RC_A$A,readLen_RC_B$B,readLen_RC_C$C,readLen_RC_D$D,readLen_RC_E$E,readLen_RC_F$F,readLen_RC_G$G,readLen_RC_H$H)
+names(readLen)<-c("Length", "A","B","C","D","E","F","G","H")
+
+
+readLen_long <-data.frame(reshape::melt(readLen, id.vars = "Length"))
+
+colnames(readLen_long)<-c("Length", "Batch", "Value")
+
+ggplot(readLen_long, aes(x=Length,y=Value,color=Batch)) +  
+geom_line() + scale_color_igv() +  geom_vline(xintercept = 22,linetype="dashed") +  annotate("text", x=23, y=0, label="22nt", angle=0, fontface = "bold") + theme_bw() + 
+labs(x = "Nucleotide length", y= "% Reads" , title="Genome distribution") +geom_line(size=1.2) +theme(axis.title = element_text(face="bold"), plot.title = element_text(size = 12, face = "bold")) 
+
+
+```
+
