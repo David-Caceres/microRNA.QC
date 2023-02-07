@@ -26,3 +26,8 @@ gridExtra
 plyr
 limma
 edgeR
+impute
+amap
+gplots
+MASS
+swamp

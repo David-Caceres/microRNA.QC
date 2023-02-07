@@ -6,7 +6,8 @@ output:
   pdf_document: 
     toc: yes
     toc_depth: 2
-    fig_height: 6
+    fig_height: 3
+    fig_width: 6
   html_document:
     fig_caption: yes
     toc: yes
@@ -19,14 +20,12 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, root.dir ="~/Exosomas/QC/Data/",
                       tidy.opts=list(width.cutof=30),tidy=TRUE,
-                      comment = NULL, cache = TRUE)
+                      comment = NULL, cache = TRUE,dev = 'pdf')
 
 
 ```
 
-## Libraries
-
-```{r, message=FALSE}
+```{r, echo=FALSE,message=FALSE}
 library(ggplot2)
 library(DESeq2)
 library(edgeR)
@@ -40,6 +39,7 @@ library(base)
 library(tidyverse)
 library(gridExtra)
 library(plyr)
+library(swamp)
 ```
 
 
@@ -47,28 +47,16 @@ library(plyr)
 
 ```{r}
 setwd("~/Exosomas/QC/Data/")
-
 tipos_exo<-read.table(file="readsPerc.tsv", header = TRUE, sep = "\t")
-
 brainq_reads<-read.table(file="brain_reads.tsv", header = TRUE, sep = "\t")
-
 brainq_short<-read.table(file="brainq_short.tsv", header = TRUE, sep = "\t")
-
 brainq_ushort<-read.table(file="brainq_ushort.tsv", header = TRUE, sep = "\t")
-
 short<-read.table(file="shortReadsPerc.tsv", header = TRUE, sep = "\t")
-
 ushort<-read.table(file="ultrashort.tsv", header = TRUE, sep = "\t")
-
 ref.genome<-read.table(file="ref.genome.tsv", header = TRUE, sep = "\t")
-
 unmapped<-read.table(file="unmapped.tsv", header = TRUE, sep = "\t")
-
 contaminacion<-read.table(file="Contaminacion.tsv", header = TRUE, sep = "\t")
-
-brainq_contaminacion<-read.table(file="brainq_contaminacion.tsv", header = TRUE, 
-                                 sep = "\t")
-
+brainq_contaminacion<-read.table(file="brainq_contaminacion.tsv", header = TRUE,sep = "\t")
 reads_total<-read.table(file="Total_reads.tsv", header = TRUE, sep = "\t")
 
 ```
@@ -92,7 +80,6 @@ Initially we plotted the effective reads percent vs the sample distribution by b
 values <- c("A","B","C","D","E","F","G", "H")
 tipos_exo$batch<-as.factor(tipos_exo$batch)
 tipos_exo$batch_shortname <- values[tipos_exo$batch]
-
 
 # Percent of effective reads
 
@@ -118,7 +105,6 @@ p1 <- ggplot(tipos_exo,aes(x = sample1, y = value, fill = factor(X, levels=c("re
         plot.title = element_text(face="bold")
     ) + scale_fill_simpsons(labels=c("Adapter not found","Short Reads%","Reads%"
                                      ))
-
 tipos_exo1 <- tipos_exo |>
     distinct(sample, sample1, batch_shortname)
 
@@ -130,7 +116,6 @@ p_axis <- ggplot(tipos_exo1, aes(x = sample1, y = factor(1),
     labs(x="Batch Annotation", fill="Batch") 
 
 p1_q<-p1 / p_axis + plot_layout(heights = c(8,1))  + scale_fill_igv()
-
 
 # Brain
 
@@ -161,7 +146,6 @@ theme(legend.position="none")
 p3_qb<-p_reads_brain / p_axis_reads_brain + plot_layout(heights = c(8, 1))+ 
   scale_fill_igv()
 
-
 pt1<-plot_grid(p1_q,p3_qb, rel_widths = c(1.7, 1.3), labels = c("A","B"))
 
 pt1
@@ -175,15 +159,11 @@ Plot of the short reads obtained from mirnaQC
 
 
 ```{r}
-
 #Short Reads%
-
-
 short <- short |> 
     mutate(sample1 = reorder(sample, 
                              -ifelse(!X %in% "shortReadsPerc", 0, value), 
                              FUN = sum))
-
 
 p_short<-ggplot(short,aes(x =sample1, y = value, fill = factor(X, levels=c("readsAdapterNotFoundPerc","reads","shortReadsPerc")), width=1.05)) +
 geom_bar( stat = "identity") +
@@ -202,14 +182,12 @@ legend.background = element_rect(fill='transparent'),
 legend.box.background = element_rect(fill='transparent')) + 
 scale_fill_simpsons(labels=c("Adapter not found","Reads%","Short Reads%"))
 
-
 p_axis_short <- ggplot(short, aes(x =sample1, y = factor(1), fill = batch)) +
 geom_tile(width = 1) +
 theme_void() +
 theme(axis.title.x = element_text()) + theme(legend.position = "none") +
 labs(x="Batch Annotation", fill="Batch")
 p3q<-p_short / p_axis_short + plot_layout(heights = c(8, 1))  + scale_fill_igv()
-
 
 # Brain
 
@@ -231,8 +209,6 @@ legend.background = element_rect(fill='transparent'),
 legend.box.background = element_rect(fill='transparent')
 ) +
 theme(legend.position="none")
-
-
 p_axis_short_brain <- ggplot(brainq_short, aes(x =batch, y = factor(1), 
                                                fill = batch_shortname)) +
 geom_tile(width = 1) +
@@ -244,9 +220,7 @@ theme(legend.position="none")
 p4_qb<-p_short_brain / p_axis_short_brain + plot_layout(heights = c(8, 1)) + 
 scale_fill_igv()
 
-
 pt2<-plot_grid(p3q,p4_qb, rel_widths = c(1.7, 1.3))
-
 pt2
 ```
 
@@ -254,14 +228,10 @@ pt2
 ## Ultra short reads percent. Less than 15 nucleotides.
 
 ```{r}
-
 # Ultra Short%
-
 ushort <- ushort |> 
     mutate(sample1 = reorder(sample, -ifelse(!X %in% "ultraShortReadsPerc", 0,
                                              value), FUN = sum))
-
-
 p_ushort<-ggplot(ushort,aes(x =sample1, y = value, fill = factor(X, levels=c("readsAdapterNotFoundPerc","reads","ultraShortReadsPerc")), 
                             width=1.05)) +
 geom_bar( stat = "identity") +
@@ -282,8 +252,6 @@ plot.title = element_text(face="bold")
 ) + scale_fill_simpsons(labels=c("Adapter not found","Reads%",
                                  "Ultra short Reads%"))
 
-
-
 p_axis_ushort <- ggplot(ushort, aes(x =sample1, y = factor(1), fill = batch)) +
 geom_tile(width = 1) +
 theme_void() +
@@ -291,8 +259,6 @@ theme(axis.title.x = element_text()) + theme(legend.position = "none") +
 labs(x="Batch Annotation", fill="Batch")
 p5_q<-p_ushort / p_axis_ushort + plot_layout(heights = c(8, 1)) +
   scale_fill_igv()
-
-
 
 # Brain
 
@@ -316,7 +282,6 @@ plot.title = element_text(face="bold")
 ) +
 theme(legend.position="none")
 
-
 p_axis_ushort_brain <- ggplot(brainq_ushort, aes(x =batch, y = factor(1),
                                                  fill = batch_shortname)) +
 geom_tile(width = 1) +
@@ -328,9 +293,7 @@ theme(legend.position="none")
 p5_qb<-p_ushort_brain / p_axis_ushort_brain + plot_layout(heights = c(8, 1))  +
   scale_fill_igv()
 
-
 pt3<-plot_grid(p5_q,p5_qb, rel_widths = c(1.7, 1.3))
-
 pt3
 ```
 
@@ -338,19 +301,14 @@ pt3
 ## Reference genome contamination percent.
 
 ```{r}
-
 contaminacion$batch<-as.factor(contaminacion$batch)
 contaminacion$batch_shortname <- values[contaminacion$batch]
 
-
 # Referece genome contamination
-
 
 contaminacion <- contaminacion |> 
     mutate(sample1 = reorder(sample, -ifelse(!variable %in% "% ref.genome", 
                                              0, value), FUN = sum))
-
-
 p_ref.genome<-ggplot(contaminacion,
                      aes(x =sample1, y = value, 
                                        fill = factor(variable, 
@@ -375,10 +333,8 @@ legend.background = element_rect(fill='transparent'),
 legend.box.background = element_rect(fill='transparent')
 ) + scale_fill_simpsons(labels=c("Virus","Bacteria","Unmapped","Mapped Reads%"))
 
-
 contaminacion1 <- contaminacion |>
     distinct(sample, sample1, batch_shortname)
-
 p_axis_ref.genome <- ggplot(contaminacion1, aes(x =sample1, y = factor(1), 
                                                 fill = batch_shortname)) +
 geom_tile(width = 1) +
@@ -387,7 +343,6 @@ theme(axis.title.x = element_text()) + theme(legend.position = "none") +
 labs(x="Batch Annotation", fill="Batch")
 p6_q<-p_ref.genome / p_axis_ref.genome + plot_layout(heights = c(8, 1))  +
   scale_fill_igv()
-
 
 # Brain
 
@@ -434,7 +389,6 @@ plot_grid(p6_q,p6_qb, rel_widths = c(2, 1))
 
 
 ```{r}
-
 # Unmapped reads%
 
 contaminacion <- contaminacion |> 
@@ -497,7 +451,6 @@ legend.box.background = element_rect(fill='transparent')
 ) +
 theme(legend.position="none")
 
-
 p_axis_unmapped_brain <- ggplot(brainq_contaminacion, 
                                 aes(x =batch, y = factor(1), 
                                     fill = batch_shortname)) +
@@ -510,7 +463,6 @@ theme(legend.position="none")
 p7_qb<-p_unmapped_brain/p_axis_unmapped_brain + plot_layout(heights = c(8, 1)) +
   scale_fill_igv()
 
-
 plot_grid(p7_q,p7_qb, rel_widths = c(2, 1))
 
 ```
@@ -519,7 +471,6 @@ plot_grid(p7_q,p7_qb, rel_widths = c(2, 1))
 ## Bacteria reads percent. Contamination.
 
 ```{r}
-
 # Bacteria
 
 contaminacion <- contaminacion |> 
@@ -546,7 +497,6 @@ legend.background = element_rect(fill='transparent'),
 legend.box.background = element_rect(fill='transparent')
 ) + scale_fill_simpsons(labels=c("Mapped Reads%","Unmapped","Virus","Bacteria"))
 
-
 contaminacion1 <- contaminacion |>
     distinct(sample, sample1, batch_shortname)
 
@@ -558,7 +508,6 @@ theme(axis.title.x = element_text()) + theme(legend.position = "none") +
 labs(x="Batch Annotation", fill="Batch")
 p8_q<-p_bacteria / p_axis_bacteria + plot_layout(heights = c(8, 1)) +
   scale_fill_igv()
-
 
 # Brain
 
@@ -580,7 +529,6 @@ legend.box.background = element_rect(fill='transparent')
 ) +
 theme(legend.position="none")
 
-
 p_axis_bacteria_brain <- ggplot(brainq_contaminacion, 
                                 aes(x =batch, y = factor(1), 
                                     fill = batch_shortname)) +
@@ -596,8 +544,6 @@ p8_qb<-p_bacteria_brain/p_axis_bacteria_brain + plot_layout(heights = c(8, 1))+
 
 
 pt8<-plot_grid(p8_q,p8_qb, rel_widths = c(1.7, 1.3))
-
-
 pt8
 ```
 
@@ -607,11 +553,9 @@ pt8
 ```{r}
 # Virus
 
-
 contaminacion <- contaminacion |> 
     mutate(sample1 = reorder(sample, -ifelse(!variable %in% "virus", 0, value), 
                              FUN = sum))
-
 p_virus<-ggplot(contaminacion,
                 aes(x =sample1, y = value, fill = factor(variable, levels=c("% ref.genome","unmapped","bacteria","virus")), width=1.05)) +
 geom_bar( stat = "identity") +
@@ -629,7 +573,6 @@ legend.background = element_rect(fill='transparent'),
 legend.box.background = element_rect(fill='transparent')
 ) + scale_fill_simpsons(labels=c("Mapped Reads%","Unmapped","Bacteria","Virus"))
 
-
 contaminacion1 <- contaminacion |>
     distinct(sample, sample1, batch_shortname)
 
@@ -642,7 +585,6 @@ labs(x="Batch Annotation", fill="Batch")
 
 p9_q<-p_virus / p_axis_virus + plot_layout(heights = c(8, 1)) +
   scale_fill_igv()
-
 
 # Brain
 
@@ -664,7 +606,6 @@ legend.box.background = element_rect(fill='transparent')
 ) +
 theme(legend.position="none")
 
-
 p_axis_virus_brain <- ggplot(brainq_contaminacion, 
                              aes(x =batch, y = factor(1), 
                                  fill = batch_shortname)) +
@@ -678,7 +619,6 @@ p9_qb<-p_virus_brain / p_axis_virus_brain + plot_layout(heights = c(8, 1))+
   scale_fill_igv()
 
 pt9<-plot_grid(p9_q,p9_qb, rel_widths = c(1.7, 1.3))
-
 pt9
 ```
 
@@ -688,8 +628,6 @@ pt9
 ```{r}
 
 reads_total_brain<-reads_total[c(13,42,77,106,141,194,222,256),]
-
-
 
 p_reads_t<-ggplot(reads_total,aes(x = reorder(sample, -reads), y = reads,
                                   fill = variable, width=1.05)) +
@@ -718,7 +656,6 @@ labs(x="Batch Annotation", fill="Batch Annotation") +
   theme(legend.position = "none") + scale_fill_igv()
 
 p10_q<-p_reads_t / p_axis_reads_t + plot_layout(heights = c(8, 1))  
-
 
 # Brain
 
@@ -749,11 +686,8 @@ theme(axis.title.x = element_text()) +
 labs(x="Batch Annotation") + theme(legend.position = "none") +
 scale_fill_igv()
 
-
 p10_qb<-p_reads_total_brain/ p_axis_total_brain + plot_layout(heights = c(8, 1))  
-
 pt10<-plot_grid(p10_q,p10_qb, rel_widths = c(1.7, 1.3))
-
 pt10
 ```
 
@@ -765,9 +699,7 @@ We builded a EM from files obtained from srnaToolBox. We did it for each batch, 
 
 ```{r warning=FALSE}
 
-
 setwd("~/Exosomas/QC/Expresion/Expresion_180322-190603/")
-
 filenames <- list.files(pattern="*.tsv") # Read data
 all_files <- lapply(filenames,function(x) { # All files in a list
 read.table(file = x,
@@ -785,9 +717,7 @@ write.table(matrixA,
             file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixA.csv", 
             quote = TRUE, sep = ",")
 
-
 setwd("~/Exosomas/QC/Expresion/Expresion_180626-180628-190531/")
-
 filenames <- list.files(pattern="*.tsv") 
 all_files <- lapply(filenames,function(x) { 
 read.table(file = x,
@@ -805,9 +735,7 @@ write.table(matrixB,
             file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixB.csv", 
             quote = TRUE, sep = ",")
 
-
 setwd("~/Exosomas/QC/Expresion/Expresion_180726-190530/")
-
 filenames <- list.files(pattern="*.tsv") 
 all_files <- lapply(filenames,function(x) {
 read.table(file = x,
@@ -821,14 +749,11 @@ matrixC<-rbindlist(list4,fill=TRUE)
 matrixC[is.na(matrixC)] = 0
 matrixC<-ddply(matrixC,.(name),numcolwise(sum))
 
-
 write.table(matrixC, 
             file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixC.csv",
             quote = TRUE, sep = ",")
 
-
 setwd("~/Exosomas/QC/Expresion/Expresion_180913-190529/")
-
 filenames <- list.files(pattern="*.tsv") 
 all_files <- lapply(filenames,function(x) { 
 read.table(file = x,
@@ -846,9 +771,7 @@ write.table(matrixD,
             file = "~/Exosomas/QC/Expresion/Matrices de Expresion/matrixD.csv", 
             quote = TRUE, sep = ",")
 
-
 setwd("~/Exosomas/QC/Expresion/Expresion_180919-190527/")
-
 filenames <- list.files(pattern="*.tsv")
 all_files <- lapply(filenames,function(x) { 
 read.table(file = x,
@@ -867,7 +790,6 @@ write.table(matrixE,
 
 
 setwd("~/Exosomas/QC/Expresion/Expresion_181003-190524/")
-
 filenames <- list.files(pattern="*.tsv") 
 all_files <- lapply(filenames,function(x) { 
 read.table(file = x,
@@ -886,7 +808,6 @@ write.table(matrixF,
 
 
 setwd("~/Exosomas/QC/Expresion/Expresion_181004-190521/")
-
 filenames <- list.files(pattern="*.tsv") 
 all_files <- lapply(filenames,function(x) {
 read.table(file = x,
@@ -905,7 +826,6 @@ write.table(matrixG,
 
 
 setwd("~/Exosomas/QC/Expresion/Expresion_181023-190319/")
-
 filenames <- list.files(pattern="*.tsv") 
 all_files <- lapply(filenames,function(x) {
 read.table(file = x,
@@ -924,7 +844,6 @@ write.table(matrixH,
 
 
 setwd("~/Exosomas/QC/Expresion/Matrices de Expresion/")
-
 filenames <- list.files(pattern="*.csv") 
 all_files <- lapply(filenames,function(x) { 
 read.delim(file = x,
@@ -936,7 +855,6 @@ matrixX<-rbindlist(all_files,fill=TRUE)
 matrixX<-matrixX %>% mutate_if(is.integer,as.numeric)
 matrixX[is.na(matrixX)] = 0
 matrixX<-ddply(matrixX,.(name),numcolwise(sum))
-
 matrixX<-matrixX[apply(matrixX[,-1], 1, function(x) !all(x==0)),]
 
 p<-"~/Exosomas/QC/Expresion/Matrices de Expresion/Expression matrix/matrixX.csv"
@@ -945,10 +863,6 @@ write.table(matrixX,
 
 file.remove('matrixA.csv','matrixB.csv','matrixC.csv','matrixD.csv',
             'matrixE.csv','matrixF.csv','matrixG.csv','matrixH.csv')
-
-
-
-
 ```
 
 
@@ -969,7 +883,6 @@ We are looking for 21-23 nucleotides reads, which is the cannonical lenght for t
 
 
 ```{r echo=FALSE}
-
 setwd("~/Exosomas/QC/readLen/Expresion_180322-190603/")
 filenames <- list.files(pattern="*/*.tsv", recursive=TRUE) # Reading files
 all_files <- lapply(filenames,function(x) { # Loading files in a list
@@ -1112,7 +1025,6 @@ readLen_RC_H<-readLen_RC %>% dplyr::select(-contains("Brain"))
 names(readLen_RC_H)=stringr::str_sub(names(readLen_RC_H),2)
 names(readLen_RC_H)[names(readLen_RC_H) == 'ead.Length..nt.'] <- 'Read_Length_nt'
 
-
 ```
 
 
@@ -1122,7 +1034,6 @@ names(readLen_RC_H)[names(readLen_RC_H) == 'ead.Length..nt.'] <- 'Read_Length_nt
 Plotting the lenght distribution of reads by batch
 
 ```{r}
-
 readLen_RC_A$A = rowMeans(readLen_RC_A[,c(2,36)])
 readLen_RC_B$B = rowMeans(readLen_RC_B[,c(2,32)])
 readLen_RC_C$C = rowMeans(readLen_RC_C[,c(2,36)])
@@ -1135,7 +1046,6 @@ readLen_RC_H$H = rowMeans(readLen_RC_H[,c(2,29)])
 readLen<-data.frame(readLen_RC_A$Read_Length_nt,readLen_RC_A$A,readLen_RC_B$B,
                     readLen_RC_C$C,readLen_RC_D$D,readLen_RC_E$E,readLen_RC_F$F,readLen_RC_G$G,readLen_RC_H$H)
 names(readLen)<-c("Length", "A","B","C","D","E","F","G","H")
-
 
 readLen_long <-data.frame(reshape::melt(readLen, id.vars = "Length"))
 
@@ -1154,15 +1064,13 @@ labs(x = "Nucleotide length", y= "% Reads" , title="Genome distribution")+
 ```
 
 
-
-
 # Multi dimensional Scaling
 
 We observed a possible batch effect in the reads distribution, so we performed a MDS using DESeq2 package.
 
 
 
-```{r echo=FALSE}
+```{r echo=FALSE, message=FALSE}
 
 # Format to expression matrix and clinical info table
 
@@ -1257,17 +1165,14 @@ design  <-  model.matrix(~0+cross2$Diagnosis)
 dds <- DESeqDataSetFromMatrix(counts.keep,
 colData = cross2,
 design = design)
-
-dim(dds)
-
-
 ```
-
 
 
 ## Multi dimenstional scaling plots
 
-```{r}
+Plot of all the quality features to search for possible batch effect.
+
+```{r echo=FALSE, warning=FALSE,message=FALSE}
 # Multi dimensional scaling
 
 vsd <- varianceStabilizingTransformation(dds,blind=TRUE)
@@ -1276,7 +1181,6 @@ mds <- cmdscale(dist(t(assay(vsd))))
 cross2.mds <- merge(x = cross2,y = mds,by.x='sample',by.y='row.names')
 
 colnames(cross2.mds)<-c("sample","OMICID","Age","Sex","Race","Diagnosis","Center","PatientID","Batch","batch_shortname","smp","sample_shortname","Reads","Short_reads","Ultra_short_reads","Bacteria","Virus","reads_total","V1","V2")
-
 
 m1<-ggplot(cross2.mds, aes(x = V1, y = V2, color = batch_shortname)) +
     geom_point(size = 3) + coord_fixed() + ggtitle("MDS Batch") + stat_ellipse() + theme_bw() +theme(axis.title = element_text(face="bold"), plot.title = element_text(size = 12, face = "bold"))
@@ -1326,18 +1230,45 @@ m11<-ggplot(cross2.mds, aes(x = V1, y = V2, color = Virus)) +
 
 m11<- m11 + scale_color_gradient(low="white", high="dark blue",name = "Virus%")
 
-m12<-ggplot(cross2.mds, aes(x = V1, y = V2, color = reads_total, label=Batch)) +
+m12<-ggplot(cross2.mds, aes(x = V1, y = V2, color = reads_total, label=batch_shortname)) +
     geom_text(size = 5) + coord_fixed() + ggtitle("MDS Reads total") + theme_bw() +theme(axis.title = element_text(face="bold"), plot.title = element_text(size = 12, face = "bold"))
 
 m12<- m12 + scale_color_gradient(low="white", high="red",name = "Reads total")
 
+m1
+m2
+m3
+m5
+m6
+m7
+m8
+m9
+m10
+m11
+```
 
-grid.arrange(m1,m2,m3,m6, nrow=2)
-grid.arrange(m7,m8,m9,m12, nrow=2)
-grid.arrange(m10,m11,nrow=1)
 
-grid.arrange(m1,m3, ncol=2)
+## Principal components correlation
 
-grid.arrange(m1,m2,m3,m5,m6,m7,m8,m9,m10,m11,m12, ncol=2)
+Finally we performed a test to check the possible correlation between variables and find the real origin of the batch effect.
+
+
+```{r fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
+
+cross3<-data.frame(cross2$Age,cross2$Gender,cross2$Diagnosis,cross2$batch_shortname, cross2$Reads,cross2$Short_reads,cross2$Ultra_short_reads,cross2$reads_total, cross2$Bacteria, cross2$Virus)
+rownames(cross3)<-cross2$sample
+colnames(cross3)<-c("Age","Gender","Diagnosis","Batch","Reads perc","Short Reads", "Ultra short reads", "Reads total", "Bacteria", "Virus")
+
+all.equal(colnames(assay(vsd)), rownames(cross3))
+
+cross3$Gender<-as.factor(cross3$Gender)
+cross3$Age<-as.numeric(cross3$Age)
+cross3$Diagnosis<-as.factor(cross3$Diagnosis)
+names(cross3)[names(cross3) == 'Gender'] <- 'Sex'
+
+pr_out <- prince(assay(vsd),cross3,top=20,center = TRUE)
+prince.plot(pr_out,note = TRUE,Rsquared = TRUE)
+confounding(cross3,method="chisq")
+
 
 ```
